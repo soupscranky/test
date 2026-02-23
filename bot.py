@@ -591,8 +591,9 @@ def select_nth_named_select_option(sb, name_contains, index, option_text, timeou
     return False
 
 
-def select_random_option_in_nth_named_select(sb, name_contains, index, exclude_texts=None, timeout=12):
+def select_random_option_in_nth_named_select(sb, name_contains, index, exclude_texts=None, include_texts=None, timeout=12):
     exclude_texts = {t.strip() for t in (exclude_texts or []) if t and str(t).strip()}
+    include_texts = {t.strip() for t in (include_texts or []) if t and str(t).strip()}
 
     js = f'''
     (function() {{
@@ -642,6 +643,8 @@ def select_random_option_in_nth_named_select(sb, name_contains, index, exclude_t
         if lt in {"select", "select one", "please select", "-", "--"}:
             continue
         if t in exclude_texts:
+            continue
+        if include_texts and t not in include_texts:
             continue
         if opt.get("disabled"):
             continue
@@ -909,6 +912,14 @@ def run_registration(
                     print("Profile page loaded.")
                     human_pause(sb, 0.8, 1.6)
 
+                    birth_years = [
+                        "1960","1961","1962","1963","1964","1965","1966","1967","1968","1969",
+                        "1970","1971","1972","1973","1974","1975","1976","1977","1978","1979",
+                        "1980","1981","1982","1983","1984","1985","1986","1987","1988","1989",
+                        "1990","1991","1992","1993","1994","1995","1996","1997","1998","1999",
+                        "2000","2001","2002","2003","2004","2005","2006","2007"
+                    ]
+
                     print("Selecting birth year...")
                     try:
                         chosen_year = select_random_option_in_nth_named_select(
@@ -916,22 +927,17 @@ def run_registration(
                             name_contains="additionalCustomerAttributes",
                             index=1,
                             exclude_texts=[],
+                            include_texts=birth_years,
                             timeout=14,
                         )
                         if chosen_year:
                             print(f"  Selected birth year: {chosen_year}")
                             human_pause(sb, 0.8, 1.6)
                         else:
-                            birth_years = [
-                                "1960","1961","1962","1963","1964","1965","1966","1967","1968","1969",
-                                "1970","1971","1972","1973","1974","1975","1976","1977","1978","1979",
-                                "1980","1981","1982","1983","1984","1985","1986","1987","1988","1989",
-                                "1990","1991","1992","1993","1994","1995","1996","1997","1998","1999",
-                                "2000","2001","2002","2003","2004","2005","2006","2007"
-                            ]
+                            # Direct fallback restricted to our list
                             random_year = random.choice(birth_years)
                             if select_option_by_text_safe(sb, birth_year_selector, random_year, timeout=12):
-                                print(f"  Selected birth year: {random_year}")
+                                print(f"  Selected birth year (fallback): {random_year}")
                                 human_pause(sb, 0.8, 1.6)
                             else:
                                 print("  Birth year selection failed.")
