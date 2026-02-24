@@ -11,6 +11,7 @@ import platform
 from seleniumbase import SB
 from utils import get_otp
 from dotenv import load_dotenv
+import random
 
 load_dotenv()
 
@@ -1008,6 +1009,8 @@ def run_registration(
                         "Canada",
                         "Great Britain"
                     ]
+
+                    random.shuffle(teams)
 
                     print(f"Selecting team preferences ({len(teams)})...")
                     for i, team in enumerate(teams, start=1):
