@@ -113,5 +113,6 @@ jobs:
           IMAP_USER: ${{ secrets.IMAP_USER }}
           IMAP_PASS: ${{ secrets.IMAP_PASS }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          PROXIES_LIST: ${{ secrets.PROXIES_LIST }}
         run: |
           python bot.py --row-index "${{ steps.claim.outputs.row_to_process }}"
