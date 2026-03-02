@@ -11,23 +11,39 @@ import platform
 from seleniumbase import SB
 from utils import get_otp
 from dotenv import load_dotenv
-import random
 
 load_dotenv()
 
-if platform.system() == 'Windows':
+if platform.system() == "Windows":
     def lock_file(file):
         pass
+
     def unlock_file(file):
         pass
 else:
     import fcntl
+
     def lock_file(file):
         fcntl.flock(file.fileno(), fcntl.LOCK_EX)
+
     def unlock_file(file):
         fcntl.flock(file.fileno(), fcntl.LOCK_UN)
 
+
 DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
+
+COUNTRY_POOL = [
+    "United States of America",
+    "Germany",
+    "Great Britain",
+    "France",
+    "Japan",
+    "Italy",
+    "Australia",
+    "Canada",
+    "Spain",
+    "Brazil",
+]
 
 
 def is_truthy(value):
@@ -161,7 +177,7 @@ def human_pause(sb, min_s=0.15, max_s=0.45):
 
 def human_mouse_move(sb, selector):
     try:
-        js_code = f'''
+        js_code = f"""
         (function() {{
             let el = null;
             const selector = {json.dumps(selector)};
@@ -180,9 +196,9 @@ def human_mouse_move(sb, selector):
                 y: rect.top + rect.height / 2 + (Math.random() - 0.5) * rect.height * 0.3
             }};
         }})();
-        '''
+        """
         pos = sb.cdp.evaluate(js_code)
-        if pos and 'x' in pos and 'y' in pos:
+        if pos and "x" in pos and "y" in pos:
             sb.cdp.sleep(random.uniform(0.05, 0.15))
             sb.cdp.gui_hover_element(selector)
             sb.cdp.sleep(random.uniform(0.05, 0.1))
@@ -219,7 +235,7 @@ def select_option_by_text_strict(sb, selector, text, timeout=10):
     except Exception:
         pass
 
-    js_code = f'''
+    js_code = f"""
     (function() {{
         let el = null;
         const selector = {json.dumps(selector)};
@@ -240,7 +256,7 @@ def select_option_by_text_strict(sb, selector, text, timeout=10):
         el.dispatchEvent(new Event('change', {{ bubbles: true }}));
         return {{ok: true}};
     }})();
-    '''
+    """
     result = sb.cdp.evaluate(js_code)
     return isinstance(result, dict) and result.get("ok", False)
 
@@ -277,7 +293,7 @@ def select_option_by_text_safe(sb, selector, text, timeout=10):
     except Exception:
         pass
 
-    js_code = f'''
+    js_code = f"""
     (function() {{
         let el = null;
         const selector = {json.dumps(selector)};
@@ -320,7 +336,7 @@ def select_option_by_text_safe(sb, selector, text, timeout=10):
         el.dispatchEvent(new Event('change', {{ bubbles: true }}));
         return {{ok: true, chosen: (match.textContent || '').trim()}};
     }})();
-    '''
+    """
     result = sb.cdp.evaluate(js_code)
     return isinstance(result, dict) and result.get("ok", False)
 
@@ -331,7 +347,7 @@ def click_add_another_for_select(sb, selector, timeout=8):
     except Exception:
         return False
 
-    js_code = '''
+    js_code = """
     (function() {
         let el = null;
         const selector = __SELECTOR__;
@@ -388,8 +404,8 @@ def click_add_another_for_select(sb, selector, timeout=8):
 
         return {ok: false, reason: 'add button not found'};
     })();
-    '''
-    js_code = js_code.replace('__SELECTOR__', json.dumps(selector))
+    """
+    js_code = js_code.replace("__SELECTOR__", json.dumps(selector))
 
     result = sb.cdp.evaluate(js_code)
     if isinstance(result, dict) and result.get("ok", False):
@@ -403,7 +419,7 @@ def enter_otp_code(sb, otp, timeout=60):
     if not otp:
         return False
 
-    js_fill = f'''
+    js_fill = f"""
     (function() {{
       const code = {json.dumps(otp)};
       const isVisible = (el) => {{
@@ -451,8 +467,6 @@ def enter_otp_code(sb, otp, timeout=60):
         const inputs = collectInputs(root);
         if (!inputs.length) return {{ok:false, reason:'no inputs'}};
 
-        const norm = (t) => (t||'').replace(/\\s+/g,' ').trim().toLowerCase();
-
         let single = inputs.find(i => (i.getAttribute('autocomplete')||'').toLowerCase() === 'one-time-code');
         if (!single) single = inputs.find(i => /otp|one.?time|verification|verify|code/i.test(i.name||'') || /otp|verification|code/i.test(i.id||''));
         if (!single) single = inputs.find(i => /otp|verification|code/i.test(i.getAttribute('aria-label')||'') || /otp|verification|code/i.test(i.getAttribute('placeholder')||''));
@@ -497,7 +511,7 @@ def enter_otp_code(sb, otp, timeout=60):
 
       return r || {{ok:false, reason:'unknown'}};
     }})();
-    '''
+    """
 
     end = time.time() + timeout
     last = None
@@ -524,7 +538,7 @@ def enter_otp_code(sb, otp, timeout=60):
 
 def select_nth_named_select_option(sb, name_contains, index, option_text, timeout=12):
     def _list_selects():
-        js = f'''
+        js = f"""
         (function() {{
             const needle = {json.dumps(name_contains)};
             const isVisible = (node) => {{
@@ -544,7 +558,7 @@ def select_nth_named_select_option(sb, name_contains, index, option_text, timeou
                 }}));
             return {{count: selects.length, selects}};
         }})();
-        '''
+        """
         return sb.cdp.evaluate(js) or {}
 
     for attempt in range(6):
@@ -565,7 +579,7 @@ def select_nth_named_select_option(sb, name_contains, index, option_text, timeou
         if len(selects) < index:
             last_name = selects[-1].get("name")
             if last_name:
-                last_sel = f'select[name={json.dumps(last_name)}]'
+                last_sel = f"select[name={json.dumps(last_name)}]"
                 click_add_another_for_select(sb, last_sel, timeout=4)
             sb.cdp.sleep(0.9)
             continue
@@ -577,7 +591,7 @@ def select_nth_named_select_option(sb, name_contains, index, option_text, timeou
         if not target_visible and index > 1:
             prev_name = selects[index - 2].get("name")
             if prev_name:
-                prev_sel = f'select[name={json.dumps(prev_name)}]'
+                prev_sel = f"select[name={json.dumps(prev_name)}]"
                 click_add_another_for_select(sb, prev_sel, timeout=4)
             sb.cdp.sleep(0.9)
             continue
@@ -586,7 +600,7 @@ def select_nth_named_select_option(sb, name_contains, index, option_text, timeou
             sb.cdp.sleep(0.5)
             continue
 
-        target_selector = f'select[name={json.dumps(target_name)}]'
+        target_selector = f"select[name={json.dumps(target_name)}]"
         return select_option_by_text_safe(sb, target_selector, option_text, timeout=timeout)
 
     return False
@@ -596,7 +610,7 @@ def select_random_option_in_nth_named_select(sb, name_contains, index, exclude_t
     exclude_texts = {t.strip() for t in (exclude_texts or []) if t and str(t).strip()}
     include_texts = {t.strip() for t in (include_texts or []) if t and str(t).strip()}
 
-    js = f'''
+    js = f"""
     (function() {{
         const needle = {json.dumps(name_contains)};
         const isVisible = (node) => {{
@@ -624,7 +638,7 @@ def select_random_option_in_nth_named_select(sb, name_contains, index, exclude_t
             options
         }};
     }})();
-    '''
+    """
 
     info = sb.cdp.evaluate(js)
     if not (isinstance(info, dict) and info.get("ok")):
@@ -655,7 +669,7 @@ def select_random_option_in_nth_named_select(sb, name_contains, index, exclude_t
         return None
 
     random.shuffle(cleaned)
-    target_selector = f'select[name={json.dumps(sel_name)}]'
+    target_selector = f"select[name={json.dumps(sel_name)}]"
     for candidate in cleaned[:10]:
         if select_option_by_text_safe(sb, target_selector, candidate, timeout=timeout):
             return candidate
@@ -669,7 +683,7 @@ def human_type(sb, selector, text):
 
         human_mouse_move(sb, selector)
 
-        js_code = f'''
+        js_code = f"""
         (function() {{
             let el = null;
             const selector = {json.dumps(selector)};
@@ -704,7 +718,7 @@ def human_type(sb, selector, text):
 
             return true;
         }})();
-        '''
+        """
 
         result = sb.cdp.evaluate(js_code)
         human_pause(sb, 0.2, 0.4)
@@ -718,7 +732,7 @@ def human_type(sb, selector, text):
         print(f"Typing error on selector: {selector}")
         try:
             sb.cdp.type(selector, text)
-        except:
+        except Exception:
             pass
 
 
@@ -769,45 +783,61 @@ def run_registration(
             print("Page load wait complete.")
 
             try:
-                if sb.cdp.is_element_visible('button#onetrust-accept-btn-handler'):
+                if sb.cdp.is_element_visible("button#onetrust-accept-btn-handler"):
                     print("Accepting cookies...")
-                    human_click(sb, 'button#onetrust-accept-btn-handler')
+                    human_click(sb, "button#onetrust-accept-btn-handler")
                     human_pause(sb, 0.3, 0.7)
-            except:
+            except Exception:
                 pass
 
             print("Filling form fields...")
 
             human_type(sb, email_selector, email)
 
-            human_type(sb, '/html/body/div[2]/div[2]/div[2]/div[2]/div/form/div[2]/div[3]/div[2]/div[1]/div/input', first_name)
+            human_type(
+                sb,
+                "/html/body/div[2]/div[2]/div[2]/div[2]/div/form/div[2]/div[3]/div[2]/div[1]/div/input",
+                first_name,
+            )
 
-            human_type(sb, '/html/body/div[2]/div[2]/div[2]/div[2]/div/form/div[2]/div[3]/div[2]/div[2]/div/input', last_name)
+            human_type(
+                sb,
+                "/html/body/div[2]/div[2]/div[2]/div[2]/div/form/div[2]/div[3]/div[2]/div[2]/div/input",
+                last_name,
+            )
 
-            human_type(sb, '/html/body/div[2]/div[2]/div[2]/div[2]/div/form/div[2]/div[3]/div[4]/div/input', password)
+            human_type(
+                sb,
+                "/html/body/div[2]/div[2]/div[2]/div[2]/div/form/div[2]/div[3]/div[4]/div/input",
+                password,
+            )
 
             print("Selecting country...")
             select_option_by_text_strict(
                 sb,
-                '/html/body/div[2]/div[2]/div[2]/div[2]/div/form/div[2]/div[3]/div[5]/select',
+                "/html/body/div[2]/div[2]/div[2]/div[2]/div/form/div[2]/div[3]/div[5]/select",
                 country,
                 timeout=10,
             )
 
             human_pause(sb, 0.6, 1.2)
 
-            human_type(sb, '/html/body/div[2]/div[2]/div[2]/div[2]/div/form/div[2]/div[3]/div[6]/div/input', zip_code)
+            human_type(
+                sb,
+                "/html/body/div[2]/div[2]/div[2]/div[2]/div/form/div[2]/div[3]/div[6]/div/input",
+                zip_code,
+            )
 
             print("  - Checking required checkboxes...")
-            human_click(sb, '/html/body/div[2]/div[2]/div[2]/div[2]/div/form/div[2]/div[3]/div[8]/input')
+            human_click(sb, "/html/body/div[2]/div[2]/div[2]/div[2]/div/form/div[2]/div[3]/div[8]/input")
             sb.cdp.sleep(random.uniform(0.2, 0.5))
-            human_click(sb, '/html/body/div[2]/div[2]/div[2]/div[2]/div/form/div[2]/div[3]/div[9]/input')
+            human_click(sb, "/html/body/div[2]/div[2]/div[2]/div[2]/div/form/div[2]/div[3]/div[9]/input")
             sb.cdp.sleep(random.uniform(0.3, 0.6))
 
             print("Submitting form...")
-            human_click(sb, '/html/body/div[2]/div[2]/div[2]/div[2]/div/form/div[2]/div[3]/div[12]/input')
+            human_click(sb, "/html/body/div[2]/div[2]/div[2]/div[2]/div/form/div[2]/div[3]/div[12]/input")
 
-            otp_input_xpath = '/html/body/div[2]/div[2]/div[2]/div[2]/div/form/div[2]/div/input'
+            otp_input_xpath = "/html/body/div[2]/div[2]/div[2]/div[2]/div/form/div[2]/div/input"
             otp_wait_candidates = [
                 'input[autocomplete="one-time-code"]',
                 'input[type="tel"]',
@@ -854,7 +884,7 @@ def run_registration(
                     })();
                     """
                     r = sb.cdp.evaluate(js)
-                    if isinstance(r, dict) and r.get('ok'):
+                    if isinstance(r, dict) and r.get("ok"):
                         sb.cdp.sleep(random.uniform(0.4, 0.8))
                 except Exception:
                     pass
@@ -865,7 +895,24 @@ def run_registration(
                 print("IMAP credentials missing; cannot retrieve OTP.")
                 return False
 
-            otp = get_otp(imap_user, imap_pass, email)
+            # Poll for OTP up to 2 minutes, every 10 seconds
+            otp = None
+            otp_deadline = time.time() + 120  # 2 minutes max
+            attempt = 0
+
+            while time.time() < otp_deadline and not otp:
+                attempt += 1
+                otp = get_otp(imap_user, imap_pass, email)
+                if otp:
+                    break
+
+                remaining = int(otp_deadline - time.time())
+                print(f"OTP not found yet (attempt {attempt}). Retrying in 10s... ({remaining}s left)")
+                try:
+                    sb.cdp.sleep(10)
+                except Exception:
+                    time.sleep(10)
+
             if otp:
                 print("OTP retrieved.")
 
@@ -875,7 +922,7 @@ def run_registration(
                 human_pause(sb, 0.6, 1.2)
 
                 print("Clicking Verify...")
-                verify_btn_xpath = '/html/body/div[2]/div[2]/div[2]/div[2]/div/form/div[3]/div[1]/input'
+                verify_btn_xpath = "/html/body/div[2]/div[2]/div[2]/div[2]/div/form/div[3]/div[1]/input"
                 if not human_click(sb, verify_btn_xpath):
                     try:
                         js = """
@@ -890,7 +937,7 @@ def run_registration(
                         })();
                         """
                         r = sb.cdp.evaluate(js)
-                        if isinstance(r, dict) and r.get('ok'):
+                        if isinstance(r, dict) and r.get("ok"):
                             sb.cdp.sleep(random.uniform(0.2, 0.5))
                     except Exception:
                         pass
@@ -909,182 +956,225 @@ def run_registration(
                         sb.cdp.sleep(10)
                 print("Profile page load wait complete.")
 
-                if True:
-                    print("Profile page loaded.")
-                    human_pause(sb, 0.8, 1.6)
+                print("Profile page loaded.")
+                human_pause(sb, 0.8, 1.6)
 
-                    birth_years = [
-                        "1960","1961","1962","1963","1964","1965","1966","1967","1968","1969",
-                        "1970","1971","1972","1973","1974","1975","1976","1977","1978","1979",
-                        "1980","1981","1982","1983","1984","1985","1986","1987","1988","1989",
-                        "1990","1991","1992","1993","1994","1995","1996","1997","1998","1999",
-                        "2000","2001","2002","2003","2004","2005","2006","2007"
-                    ]
+                birth_years = [
+                    "1960",
+                    "1961",
+                    "1962",
+                    "1963",
+                    "1964",
+                    "1965",
+                    "1966",
+                    "1967",
+                    "1968",
+                    "1969",
+                    "1970",
+                    "1971",
+                    "1972",
+                    "1973",
+                    "1974",
+                    "1975",
+                    "1976",
+                    "1977",
+                    "1978",
+                    "1979",
+                    "1980",
+                    "1981",
+                    "1982",
+                    "1983",
+                    "1984",
+                    "1985",
+                    "1986",
+                    "1987",
+                    "1988",
+                    "1989",
+                    "1990",
+                    "1991",
+                    "1992",
+                    "1993",
+                    "1994",
+                    "1995",
+                    "1996",
+                    "1997",
+                    "1998",
+                    "1999",
+                    "2000",
+                    "2001",
+                    "2002",
+                    "2003",
+                    "2004",
+                    "2005",
+                    "2006",
+                    "2007",
+                ]
 
-                    print("Selecting birth year...")
-                    try:
-                        chosen_year = select_random_option_in_nth_named_select(
-                            sb,
-                            name_contains="additionalCustomerAttributes",
-                            index=1,
-                            exclude_texts=[],
-                            include_texts=birth_years,
-                            timeout=14,
-                        )
-                        if chosen_year:
-                            print(f"  Selected birth year: {chosen_year}")
+                print("Selecting birth year...")
+                try:
+                    chosen_year = select_random_option_in_nth_named_select(
+                        sb,
+                        name_contains="additionalCustomerAttributes",
+                        index=1,
+                        exclude_texts=[],
+                        include_texts=birth_years,
+                        timeout=14,
+                    )
+                    if chosen_year:
+                        print(f"  Selected birth year: {chosen_year}")
+                        human_pause(sb, 0.8, 1.6)
+                    else:
+                        random_year = random.choice(birth_years)
+                        if select_option_by_text_safe(sb, birth_year_selector, random_year, timeout=12):
+                            print(f"  Selected birth year (fallback): {random_year}")
                             human_pause(sb, 0.8, 1.6)
                         else:
-                            # Direct fallback restricted to our list
-                            random_year = random.choice(birth_years)
-                            if select_option_by_text_safe(sb, birth_year_selector, random_year, timeout=12):
-                                print(f"  Selected birth year (fallback): {random_year}")
-                                human_pause(sb, 0.8, 1.6)
-                            else:
-                                print("  Birth year selection failed.")
+                            print("  Birth year selection failed.")
+                except Exception:
+                    print("  Birth year selection failed.")
+
+                if is_truthy(os.getenv("DEBUG_DOM")):
+                    try:
+                        js = """
+                        (function(){
+                          const selects = Array.from(document.querySelectorAll('select'))
+                            .map(s => ({name: s.name || null, id: s.id || null}))
+                            .filter(x => x.name || x.id);
+                          const fav = selects.filter(x => (x.name||'').toLowerCase().includes('favorite') || (x.id||'').toLowerCase().includes('favorite'));
+                          return {
+                            totalSelects: selects.length,
+                            first10: selects.slice(0,10),
+                            favorites: fav.slice(0,30),
+                          };
+                        })();
+                        """
+                        dbg = sb.cdp.evaluate(js)
+                        print(f"DEBUG_DOM selects: {dbg}")
                     except Exception:
-                        print("  Birth year selection failed.")
+                        pass
 
-                    if is_truthy(os.getenv("DEBUG_DOM")):
-                        try:
-                            js = """
-                            (function(){
-                              const selects = Array.from(document.querySelectorAll('select'))
-                                .map(s => ({name: s.name || null, id: s.id || null}))
-                                .filter(x => x.name || x.id);
-                              const fav = selects.filter(x => (x.name||'').toLowerCase().includes('favorite') || (x.id||'').toLowerCase().includes('favorite'));
-                              return {
-                                totalSelects: selects.length,
-                                first10: selects.slice(0,10),
-                                favorites: fav.slice(0,30),
-                              };
-                            })();
-                            """
-                            dbg = sb.cdp.evaluate(js)
-                            print(f"DEBUG_DOM selects: {dbg}")
-                        except Exception:
-                            pass
+                olympic_sports = [
+                    "Basketball",
+                    "Swimming",
+                    "Artistic Gymnastics",
+                    "Athletics",
+                    "Football (Soccer)",
+                    "Baseball",
+                    "Olympic Ceremonies",
+                    "Beach Volleyball",
+                    "Tennis",
+                    "Golf",
+                    "Softball",
+                    "Volleyball",
+                    "Wrestling",
+                    "Boxing",
+                    "Skateboarding",
+                ]
 
-                    olympic_sports = [
-                        "Olympic Opening & Closing Ceremonies",
-                        "Basketball",
-                        "Athletics (Track & Field)",
-                        "Swimming",
-                        "Tennis"
-                    ]
-                    random.shuffle(olympic_sports)
+                chosen_sports = random.sample(olympic_sports, k=min(5, len(olympic_sports)))
 
-                    print(f"Selecting Olympic sport preferences ({len(olympic_sports)})...")
-                    selected_sports = []
-                    for i, sport in enumerate(olympic_sports, start=1):
-                        select_timeout = 15 if i == 1 else 12
-                        if select_nth_named_select_option(
+                print(f"Selecting Olympic sport preferences ({len(chosen_sports)})...")
+                selected_sports = []
+                for i, sport in enumerate(chosen_sports, start=1):
+                    select_timeout = 15 if i == 1 else 12
+                    if select_nth_named_select_option(
+                        sb,
+                        name_contains="categoryFavorites",
+                        index=i,
+                        option_text=sport,
+                        timeout=select_timeout,
+                    ):
+                        print(f"  Selected Olympic sport {i}: {sport}")
+                        selected_sports.append(sport)
+                        human_pause(sb, 0.6, 1.2)
+                    else:
+                        chosen = select_random_option_in_nth_named_select(
                             sb,
                             name_contains="categoryFavorites",
                             index=i,
-                            option_text=sport,
+                            exclude_texts=selected_sports,
                             timeout=select_timeout,
-                        ):
-                            print(f"  Selected Olympic sport {i}: {sport}")
-                            selected_sports.append(sport)
+                        )
+                        if chosen:
+                            print(f"  Selected Olympic sport {i} (fallback): {chosen}")
+                            selected_sports.append(chosen)
                             human_pause(sb, 0.6, 1.2)
                         else:
-                            chosen = select_random_option_in_nth_named_select(
-                                sb,
-                                name_contains="categoryFavorites",
-                                index=i,
-                                exclude_texts=selected_sports,
-                                timeout=select_timeout,
-                            )
-                            if chosen:
-                                print(f"  Selected Olympic sport {i} (fallback): {chosen}")
-                                selected_sports.append(chosen)
-                                human_pause(sb, 0.6, 1.2)
-                            else:
-                                print(f"  Olympic sport {i} selection failed.")
-                                continue
-
-                    teams = [
-                        "United States of America",
-                        "Canada",
-                        "Great Britain"
-                    ]
-
-                    random.shuffle(teams)
-
-                    print(f"Selecting team preferences ({len(teams)})...")
-                    for i, team in enumerate(teams, start=1):
-                        select_timeout = 15 if i == 1 else 12
-                        if select_nth_named_select_option(
-                            sb,
-                            name_contains="artistFavorites",
-                            index=i,
-                            option_text=team,
-                            timeout=select_timeout,
-                        ):
-                            print(f"  Selected team {i}: {team}")
-                            human_pause(sb, 0.6, 1.2)
-                        else:
-                            print(f"  Team {i} selection failed.")
+                            print(f"  Olympic sport {i} selection failed.")
                             continue
 
-                    print("Saving profile...")
+                teams = random.sample(COUNTRY_POOL, k=min(3, len(COUNTRY_POOL)))
 
-                    save_clicked = False
-                    for sel in [
-                        'app-sports-profile-save-section button',
-                        'app-sports-profile-save-section ev-pl-button button',
-                        'app-sports-profile-save-section [role="button"]',
-                    ]:
-                        if human_click(sb, sel):
-                            save_clicked = True
-                            break
-
-                    if not save_clicked:
-                        print("Save button click failed with CSS, trying XPath.")
-                        save_clicked = human_click(
-                            sb,
-                            '/html/body/div[3]/main/div/app-root/app-customer-data-page/app-sports-profile/app-sports-profile-save-section/section/div/div/div/ev-pl-button/button',
-                        )
-
-                    if not save_clicked:
-                        try:
-                            js = """
-                            (function(){
-                              const norm = (t)=> (t||'').replace(/\\s+/g,' ').trim().toLowerCase();
-                              const nodes = Array.from(document.querySelectorAll('button,[role="button"],a,input[type="button"],input[type="submit"]'));
-                              const cand = nodes.find(n=>{const t=norm(n.textContent||n.value||n.getAttribute('aria-label')||''); return t==='save' || t.includes('save');});
-                              if(!cand) return {ok:false};
-                              cand.scrollIntoView({block:'center', inline:'center'});
-                              cand.click();
-                              return {ok:true};
-                            })();
-                            """
-                            r = sb.cdp.evaluate(js)
-                            if isinstance(r, dict) and r.get('ok'):
-                                save_clicked = True
-                        except Exception:
-                            pass
-
-                    human_pause(sb, 4, 6)
-
-                    final_url = sb.cdp.get_current_url()
-                    if "mydatasuccess" in final_url:
-                        print("=" * 60)
-                        print("SIGNUP SUCCESSFUL!")
-                        print("=" * 60)
-
-                        if DISCORD_WEBHOOK_URL:
-                            send_discord_webhook(row_index=row_index)
-                        return True
+                print(f"Selecting team preferences ({len(teams)})...")
+                for i, team in enumerate(teams, start=1):
+                    select_timeout = 15 if i == 1 else 12
+                    if select_nth_named_select_option(
+                        sb,
+                        name_contains="artistFavorites",
+                        index=i,
+                        option_text=team,
+                        timeout=select_timeout,
+                    ):
+                        print(f"  Selected team {i}: {team}")
+                        human_pause(sb, 0.6, 1.2)
                     else:
-                        print("Profile saved, checking status...")
-                        return True
+                        print(f"  Team {i} selection failed.")
+                        continue
+
+                print("Saving profile...")
+
+                save_clicked = False
+                for sel in [
+                    "app-sports-profile-save-section button",
+                    "app-sports-profile-save-section ev-pl-button button",
+                    "app-sports-profile-save-section [role='button']",
+                ]:
+                    if human_click(sb, sel):
+                        save_clicked = True
+                        break
+
+                if not save_clicked:
+                    print("Save button click failed with CSS, trying XPath.")
+                    save_clicked = human_click(
+                        sb,
+                        "/html/body/div[3]/main/div/app-root/app-customer-data-page/app-sports-profile/app-sports-profile-save-section/section/div/div/div/ev-pl-button/button",
+                    )
+
+                if not save_clicked:
+                    try:
+                        js = """
+                        (function(){
+                          const norm = (t)=> (t||'').replace(/\\s+/g,' ').trim().toLowerCase();
+                          const nodes = Array.from(document.querySelectorAll('button,[role="button"],a,input[type="button"],input[type="submit"]'));
+                          const cand = nodes.find(n=>{const t=norm(n.textContent||n.value||n.getAttribute('aria-label')||''); return t==='save' || t.includes('save');});
+                          if(!cand) return {ok:false};
+                          cand.scrollIntoView({block:'center', inline:'center'});
+                          cand.click();
+                          return {ok:true};
+                        })();
+                        """
+                        r = sb.cdp.evaluate(js)
+                        if isinstance(r, dict) and r.get("ok"):
+                            save_clicked = True
+                    except Exception:
+                        pass
+
+                human_pause(sb, 4, 6)
+
+                final_url = sb.cdp.get_current_url()
+                if "mydatasuccess" in final_url:
+                    print("=" * 60)
+                    print("SIGNUP SUCCESSFUL!")
+                    print("=" * 60)
+
+                    if DISCORD_WEBHOOK_URL:
+                        send_discord_webhook(row_index=row_index)
+                    return True
                 else:
-                    print("Did not redirect to expected profile page")
-                    return False
+                    print("Profile saved, checking status...")
+                    return True
             else:
-                print("Failed to get OTP.")
+                print("Failed to get OTP within 2 minutes.")
                 return False
 
         except Exception:
@@ -1174,6 +1264,7 @@ def main():
         sys.exit(0 if success else 1)
 
     parser.error("Requires --row-index or --email.")
+
 
 if __name__ == "__main__":
     main()
