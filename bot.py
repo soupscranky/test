@@ -680,53 +680,15 @@ def select_random_option_in_nth_named_select(sb, name_contains, index, exclude_t
 def human_type(sb, selector, text):
     try:
         sb.cdp.wait_for_element(selector, timeout=10)
-
         human_mouse_move(sb, selector)
-
-        js_code = f"""
-        (function() {{
-            let el = null;
-            const selector = {json.dumps(selector)};
-
-            try {{
-                el = document.querySelector(selector);
-            }} catch(e) {{}}
-
-            if (!el && selector.startsWith('/')) {{
-                const result = document.evaluate(selector, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
-                el = result.singleNodeValue;
-            }}
-
-            if (!el) {{
-                console.error('Element not found:', selector);
-                return false;
-            }}
-
-            el.focus();
-            el.dispatchEvent(new FocusEvent('focus', {{ bubbles: true }}));
-
-            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-                window.HTMLInputElement.prototype, "value"
-            ).set;
-            nativeInputValueSetter.call(el, {json.dumps(text)});
-
-            el.dispatchEvent(new Event('input', {{ bubbles: true }}));
-            el.dispatchEvent(new Event('change', {{ bubbles: true }}));
-            el.dispatchEvent(new KeyboardEvent('keyup', {{ bubbles: true }}));
-
-            el.dispatchEvent(new FocusEvent('blur', {{ bubbles: true }}));
-
-            return true;
-        }})();
-        """
-
-        result = sb.cdp.evaluate(js_code)
+        human_pause(sb, 0.1, 0.3)
+        
+        # Gigya and Akamai monitor JS 'value' setters and dispatchEvent speeds to flag bots (zero keyup/keydown latency).
+        # We must use the browser's native protocol to natively simulate physical hardware keystrokes.
+        sb.cdp.click(selector)
+        human_pause(sb, 0.1, 0.2)
+        sb.cdp.type(selector, text)
         human_pause(sb, 0.2, 0.4)
-
-        if not result:
-            print(f"JS injection may have failed for {selector}, falling back to cdp.type")
-            sb.cdp.click(selector)
-            sb.cdp.type(selector, text)
 
     except Exception:
         print(f"Typing error on selector: {selector}")
@@ -759,6 +721,25 @@ def run_registration(
                     random.randint(1200, 1440),
                     random.randint(720, 900),
                 )
+            except Exception:
+                pass
+
+            try:
+                stealth_js = """
+                Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                window.chrome = { runtime: {} };
+                Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3]});
+                Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
+                try { 
+                    const originalQuery = window.navigator.permissions.query;
+                    window.navigator.permissions.query = (parameters) => (
+                      parameters.name === 'notifications' ?
+                        Promise.resolve({ state: Notification.permission }) :
+                        originalQuery(parameters)
+                    );
+                } catch(e) {}
+                """
+                sb.driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {"source": stealth_js})
             except Exception:
                 pass
 
