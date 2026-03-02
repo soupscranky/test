@@ -54,18 +54,13 @@ def is_ci():
     return is_truthy(os.getenv("CI")) or is_truthy(os.getenv("GITHUB_ACTIONS"))
 
 
-def build_chromium_args(headless):
-    if not headless:
-        return []
+def build_chromium_args():
     width = random.randint(1200, 1440)
     height = random.randint(720, 900)
     return [
-        "--headless=new",
         "--no-sandbox",
         "--disable-dev-shm-usage",
-        "--disable-gpu",
         f"--window-size={width},{height}",
-        "--disable-extensions",
         "--disable-background-networking",
         "--disable-background-timer-throttling",
         "--disable-renderer-backgrounding",
@@ -73,9 +68,10 @@ def build_chromium_args(headless):
     ]
 
 
-def create_sb(proxy=None):
-    headless = is_truthy(os.getenv("HEADLESS")) or is_ci()
-    chromium_args = build_chromium_args(headless)
+def create_sb():
+    is_github = is_ci()
+    headless_env = is_truthy(os.getenv("HEADLESS"))
+    chromium_args = build_chromium_args()
 
     try:
         sig_params = inspect.signature(SB).parameters
@@ -83,16 +79,17 @@ def create_sb(proxy=None):
         sig_params = {}
 
     sb_kwargs = {"uc": True}
-    if proxy:
-        sb_kwargs["proxy"] = proxy
 
-    if headless:
+    if is_github:
+        if "xvfb" in sig_params:
+            sb_kwargs["xvfb"] = True
+    elif headless_env:
         if "headless2" in sig_params:
             sb_kwargs["headless2"] = True
         elif "headless" in sig_params:
             sb_kwargs["headless"] = True
 
-    if headless:
+    if is_github or headless_env:
         for key in ("no_sandbox", "disable_gpu", "disable_dev_shm"):
             if key in sig_params:
                 sb_kwargs[key] = True
@@ -739,23 +736,6 @@ def human_type(sb, selector, text):
             pass
 
 
-def get_proxy(row_index, proxies_path="proxies.txt"):
-    if row_index is None:
-        return None
-    if not os.path.exists(proxies_path):
-        return None
-    with open(proxies_path, "r") as f:
-        lines = [line.strip() for line in f if line.strip()]
-    if row_index < len(lines):
-        parts = lines[row_index].split(":")
-        if len(parts) >= 4:
-            host, port = parts[0], parts[1]
-            user = parts[2]
-            password = ":".join(parts[3:])
-            return f"{user}:{password}@{host}:{port}"
-        return lines[row_index]
-    return None
-
 def run_registration(
     email,
     password,
@@ -768,11 +748,7 @@ def run_registration(
     row_label = f"row index {row_index}" if row_index is not None else "manual run"
     print(f"Starting registration for {row_label}")
 
-    proxy = get_proxy(row_index)
-    if proxy:
-        print(f"Using proxy for row {row_index}")
-
-    sb = create_sb(proxy=proxy)
+    sb = create_sb()
     with sb as sb:
         try:
             try:
