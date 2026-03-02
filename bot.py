@@ -73,7 +73,7 @@ def build_chromium_args(headless):
     ]
 
 
-def create_sb():
+def create_sb(proxy=None):
     headless = is_truthy(os.getenv("HEADLESS")) or is_ci()
     chromium_args = build_chromium_args(headless)
 
@@ -83,6 +83,9 @@ def create_sb():
         sig_params = {}
 
     sb_kwargs = {"uc": True}
+    if proxy:
+        sb_kwargs["proxy"] = proxy
+
     if headless:
         if "headless2" in sig_params:
             sb_kwargs["headless2"] = True
@@ -736,6 +739,23 @@ def human_type(sb, selector, text):
             pass
 
 
+def get_proxy(row_index, proxies_path="proxies.txt"):
+    if row_index is None:
+        return None
+    if not os.path.exists(proxies_path):
+        return None
+    with open(proxies_path, "r") as f:
+        lines = [line.strip() for line in f if line.strip()]
+    if row_index < len(lines):
+        parts = lines[row_index].split(":")
+        if len(parts) >= 4:
+            host, port = parts[0], parts[1]
+            user = parts[2]
+            password = ":".join(parts[3:])
+            return f"{user}:{password}@{host}:{port}"
+        return lines[row_index]
+    return None
+
 def run_registration(
     email,
     password,
@@ -748,7 +768,11 @@ def run_registration(
     row_label = f"row index {row_index}" if row_index is not None else "manual run"
     print(f"Starting registration for {row_label}")
 
-    sb = create_sb()
+    proxy = get_proxy(row_index)
+    if proxy:
+        print(f"Using proxy for row {row_index}")
+
+    sb = create_sb(proxy=proxy)
     with sb as sb:
         try:
             try:
