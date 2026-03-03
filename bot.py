@@ -414,7 +414,7 @@ def click_add_another_for_select(sb, selector, timeout=8):
     return False
 
 
-def enter_otp_code(sb, otp, timeout=60):
+def enter_otp_code(sb, otp, timeout=60, fallback_selector=None):
     otp = (otp or "").strip()
     if not otp:
         return False
@@ -499,6 +499,21 @@ def enter_otp_code(sb, otp, timeout=60):
       let r = tryFillInRoot(document);
       if (r && r.ok) return r;
 
+      if (__FALLBACK_SELECTOR__) {{
+        try {{
+          const fs = __FALLBACK_SELECTOR__;
+          let el = document.querySelector(fs);
+          if (!el && fs.startsWith('/')) {{
+            el = document.evaluate(fs, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+          }}
+          if (el && isVisible(el)) {{
+            el.focus();
+            nativeSet(el, code);
+            return {{ok:true, mode:'explicit_fallback'}};
+          }}
+        }} catch(e) {{}}
+      }}
+
       const iframes = Array.from(document.querySelectorAll('iframe'));
       for (const f of iframes) {{
         try {{
@@ -513,6 +528,7 @@ def enter_otp_code(sb, otp, timeout=60):
     }})();
     """
 
+    js_fill = js_fill.replace("__FALLBACK_SELECTOR__", json.dumps(fallback_selector) if fallback_selector else "null")
     end = time.time() + timeout
     last = None
     while time.time() < end:
@@ -897,7 +913,7 @@ def run_registration(
             if otp:
                 print("OTP retrieved.")
 
-                if not enter_otp_code(sb, otp, timeout=60):
+                if not enter_otp_code(sb, otp, timeout=60, fallback_selector=otp_input_xpath):
                     print("Failed to enter OTP.")
                     return False
                 human_pause(sb, 0.6, 1.2)
