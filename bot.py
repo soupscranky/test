@@ -506,7 +506,7 @@ def enter_otp_code(sb, otp, timeout=60, fallback_selector=None):
           if (!el && fs.startsWith('/')) {{
             el = document.evaluate(fs, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
           }}
-          if (el && isVisible(el)) {{
+          if (el) {{
             el.focus();
             nativeSet(el, code);
             return {{ok:true, mode:'explicit_fallback'}};
@@ -834,7 +834,7 @@ def run_registration(
             print("Submitting form...")
             human_click(sb, "/html/body/div[2]/div[2]/div[2]/div[2]/div/form/div[2]/div[3]/div[12]/input")
 
-            otp_input_xpath = "/html/body/div[2]/div[2]/div[2]/div[2]/div/form/div[2]/div/input"
+            otp_input_xpath = "#gigya-textbox-code"
             otp_wait_candidates = [
                 'input[autocomplete="one-time-code"]',
                 'input[type="tel"]',
@@ -919,7 +919,7 @@ def run_registration(
                 human_pause(sb, 0.6, 1.2)
 
                 print("Clicking Verify...")
-                verify_btn_xpath = "/html/body/div[2]/div[2]/div[2]/div[2]/div/form/div[3]/div[1]/input"
+                verify_btn_xpath = "input.gigya-input-submit[value='Verify']"
                 if not human_click(sb, verify_btn_xpath):
                     try:
                         js = """
