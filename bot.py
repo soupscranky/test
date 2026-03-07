@@ -329,11 +329,17 @@ def select_option_by_text_safe(sb, selector, text, timeout=10):
             match = options.find(o => normalize(o.textContent).includes(nt) || nt.includes(normalize(o.textContent)));
         }}
 
-        if (!match) return {{ok: false, reason: 'option not found'}};
+        if (!match) return {{ok: false, reason: 'option not found', text: nt, available: options.map(o=>normalize(o.textContent))}};
 
+        el.focus();
         el.value = match.value;
-        el.dispatchEvent(new Event('input', {{ bubbles: true }}));
-        el.dispatchEvent(new Event('change', {{ bubbles: true }}));
+        match.selected = true;
+        
+        // Angular deeply listens to these specific event sequences
+        el.dispatchEvent(new Event('input', {{ bubbles: true, cancelable: true }}));
+        el.dispatchEvent(new Event('change', {{ bubbles: true, cancelable: true }}));
+        el.blur();
+
         return {{ok: true, chosen: (match.textContent || '').trim()}};
     }})();
     """
@@ -465,18 +471,11 @@ def select_nth_named_select_option(sb, name_contains, index, option_text, timeou
         js = f"""
         (function() {{
             const needle = {json.dumps(name_contains)};
-            const isVisible = (node) => {{
-                if (!node) return false;
-                const style = window.getComputedStyle(node);
-                if (style.display === 'none' || style.visibility === 'hidden') return false;
-                const r = node.getBoundingClientRect();
-                return (r.width > 0 && r.height > 0);
-            }};
             const selects = Array.from(document.querySelectorAll('select'))
                 .filter(s => s && s.name && s.name.includes(needle))
                 .map(s => ({{
                     name: s.name,
-                    visible: isVisible(s),
+                    visible: true,
                     disabled: !!s.disabled,
                     options: (s.options ? s.options.length : 0)
                 }}));
@@ -512,14 +511,6 @@ def select_nth_named_select_option(sb, name_contains, index, option_text, timeou
         target_name = target.get("name")
         target_visible = target.get("visible")
 
-        if not target_visible and index > 1:
-            prev_name = selects[index - 2].get("name")
-            if prev_name:
-                prev_sel = f"select[name={json.dumps(prev_name)}]"
-                click_add_another_for_select(sb, prev_sel, timeout=4)
-            sb.cdp.sleep(0.9)
-            continue
-
         if not target_name:
             sb.cdp.sleep(0.5)
             continue
@@ -537,13 +528,6 @@ def select_random_option_in_nth_named_select(sb, name_contains, index, exclude_t
     js = f"""
     (function() {{
         const needle = {json.dumps(name_contains)};
-        const isVisible = (node) => {{
-            if (!node) return false;
-            const style = window.getComputedStyle(node);
-            if (style.display === 'none' || style.visibility === 'hidden') return false;
-            const r = node.getBoundingClientRect();
-            return (r.width > 0 && r.height > 0);
-        }};
         const selects = Array.from(document.querySelectorAll('select'))
             .filter(s => s && s.name && s.name.includes(needle));
         const i = {index} - 1;
@@ -558,7 +542,7 @@ def select_random_option_in_nth_named_select(sb, name_contains, index, exclude_t
         return {{
             ok: true,
             name: sel.name,
-            visible: isVisible(sel),
+            visible: true,
             options
         }};
     }})();
