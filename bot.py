@@ -811,38 +811,52 @@ def run_registration(
                 human_pause(sb, 0.6, 1.2)
 
                 print("Clicking Verify...")
-                verify_btn_xpath = "input.gigya-input-submit[value='Verify']"
+                verify_btn_xpath = "input.gigya-input-submit"
                 if not human_click(sb, verify_btn_xpath):
                     try:
                         js = """
                         (function(){
-                          const norm = (t)=> (t||'').replace(/\\s+/g,' ').trim().toLowerCase();
-                          const nodes = Array.from(document.querySelectorAll('button,[role="button"],a,input[type="button"],input[type="submit"]'));
-                          const cand = nodes.find(n=>{const t=norm(n.textContent||n.value||n.getAttribute('aria-label')||''); return t==='verify' || t.includes('verify') || t.includes('continue');});
-                          if(!cand) return {ok:false};
-                          cand.scrollIntoView({block:'center', inline:'center'});
-                          cand.click();
-                          return {ok:true};
+                          const btns = Array.from(document.querySelectorAll('input.gigya-input-submit, button, input[type="submit"]'));
+                          const cand = btns.find(b => {
+                              const t = (b.value || b.innerText || '').toLowerCase();
+                              return t.includes('verify') || t.includes('submit');
+                          });
+                          if(cand) {
+                              cand.scrollIntoView({block:'center', inline:'center'});
+                              cand.click();
+                              return {ok:true, text: cand.value || cand.innerText};
+                          }
+                          return {ok:false};
                         })();
                         """
                         r = sb.cdp.evaluate(js)
                         if isinstance(r, dict) and r.get("ok"):
+                            print(f"  Fallback verify clicked via JS: {r.get('text')}")
                             sb.cdp.sleep(random.uniform(0.2, 0.5))
+                        else:
+                            print("  Fallback verify click failed.")
                     except Exception:
                         pass
 
-                birth_year_selector = 'select[name^="additionalCustomerAttributes-1_"]'
+                birth_year_selector = 'select[name^="additionalCustomerAttributes"]'
 
                 print("Waiting for profile page to load...")
-                try:
-                    sb.cdp.wait_for_element(birth_year_selector, timeout=18)
-                    human_pause(sb, 0.8, 1.6)
-                except Exception:
+                
+                profile_loaded = False
+                for _ in range(30):
                     try:
-                        sb.cdp.wait_for_element('select[name*="additionalCustomerAttributes"]', timeout=25)
-                        human_pause(sb, 0.8, 1.6)
+                        is_ready = sb.cdp.evaluate("document.querySelector('select[name^=\"additionalCustomerAttributes\"]') !== null")
+                        if is_ready:
+                            profile_loaded = True
+                            break
                     except Exception:
-                        sb.cdp.sleep(10)
+                        pass
+                    sb.cdp.sleep(1)
+                    
+                if not profile_loaded:
+                    print("ERROR: Profile page failed to load after 30 seconds. Exiting.")
+                    return False
+                    
                 print("Profile page load wait complete.")
 
                 print("Profile page loaded.")
