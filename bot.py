@@ -132,38 +132,56 @@ def resolve_column(fieldnames, candidates):
     return None
 
 
+import base64
+import io
+
 def load_row_by_index(row_index, data_path="data.csv"):
     if row_index < 0:
         return None, "invalid_index"
-    if not os.path.exists(data_path):
-        return None, "missing_data"
 
-    with open(data_path, newline="") as f:
-        reader = csv.DictReader(f)
-        if not reader.fieldnames:
-            return None, "missing_header"
+    file_content = None
+    b64_data = os.getenv("DATA_CSV_B64")
+    
+    if b64_data:
+        try:
+            file_content = base64.b64decode(b64_data).decode('utf-8')
+        except Exception:
+            pass
 
-        email_key = resolve_column(reader.fieldnames, ["email"])
-        password_key = resolve_column(reader.fieldnames, ["password", "pass"])
-        first_key = resolve_column(reader.fieldnames, ["first_name", "firstname", "first"])
-        last_key = resolve_column(reader.fieldnames, ["last_name", "lastname", "last"])
-        zip_key = resolve_column(reader.fieldnames, ["zip_code", "zipcode", "zip"])
+    if not file_content:
+        if not os.path.exists(data_path):
+            return None, "missing_data"
+        with open(data_path, "r", encoding="utf-8") as f:
+            file_content = f.read()
 
-        if not all([email_key, password_key, first_key, last_key, zip_key]):
-            return None, "missing_columns"
+    f_obj = io.StringIO(file_content)
+    reader = csv.DictReader(f_obj)
+    if not reader.fieldnames:
+        return None, "missing_header"
 
-        for index, row in enumerate(reader):
-            if index == row_index:
-                row_data = {
-                    "email": row.get(email_key, "").strip(),
-                    "password": row.get(password_key, "").strip(),
-                    "first_name": row.get(first_key, "").strip(),
-                    "last_name": row.get(last_key, "").strip(),
-                    "zip_code": row.get(zip_key, "").strip(),
-                }
-                if not all(row_data.values()):
-                    return None, "missing_values"
-                return row_data, None
+    email_key = resolve_column(reader.fieldnames, ["email"])
+    password_key = resolve_column(reader.fieldnames, ["password", "pass"])
+    
+    # Optional fields for login bot
+    first_key = resolve_column(reader.fieldnames, ["first_name", "firstname", "first"])
+    last_key = resolve_column(reader.fieldnames, ["last_name", "lastname", "last"])
+    zip_key = resolve_column(reader.fieldnames, ["zip_code", "zipcode", "zip"])
+
+    if not all([email_key, password_key]):
+        return None, "missing_columns"
+
+    for index, row in enumerate(reader):
+        if index == row_index:
+            row_data = {
+                "email": row.get(email_key, "").strip(),
+                "password": row.get(password_key, "").strip(),
+                "first_name": row.get(first_key, "John").strip() if first_key else "John",
+                "last_name": row.get(last_key, "Doe").strip() if last_key else "Doe",
+                "zip_code": row.get(zip_key, "90210").strip() if zip_key else "90210",
+            }
+            if not row_data["email"] or not row_data["password"]:
+                return None, "missing_values"
+            return row_data, None
 
     return None, "no_rows"
 
@@ -661,15 +679,23 @@ def run_registration(
                         raise
                     time.sleep(2)
 
-            email_selector = '#register-site-login > div:nth-child(1) > div.gigya-layout-row > div > input'
+            login_switch_xpath = "a[href*='/login/']"
+            print("Switching to Login form...")
+            try:
+                human_click(sb, login_switch_xpath)
+                sb.cdp.sleep(1.5)
+            except Exception:
+                pass
 
-            print("Waiting for page to load...")
+            email_selector = "input.gigya-input-text[aria-label*='Email' i], input[type='email']"
+            
+            print("Waiting for login form to load...")
             try:
                 sb.cdp.wait_for_element(email_selector, timeout=20)
                 human_pause(sb, 0.8, 1.6)
             except Exception:
-                sb.cdp.sleep(10)
-            print("Page load wait complete.")
+                sb.cdp.sleep(5)
+            print("Login form load wait complete.")
 
             try:
                 if sb.cdp.is_element_visible("button#onetrust-accept-btn-handler"):
@@ -679,402 +705,264 @@ def run_registration(
             except Exception:
                 pass
 
-            print("Filling form fields...")
-
+            print("Filling login credentials...")
             human_type(sb, email_selector, email)
+            human_type(sb, "input.gigya-input-password, input[type='password']", password)
+            
+            print("Submitting login...")
+            try:
+                submit_sel = "input.gigya-input-submit, input[value='Log In' i]"
+                human_click(sb, submit_sel)
+            except Exception:
+                js = """
+                (function(){
+                  const btns = Array.from(document.querySelectorAll('input.gigya-input-submit, button, input[type="submit"]'));
+                  const cand = btns.find(b => {
+                      const t = (b.value || b.innerText || '').toLowerCase();
+                      return t.includes('log in') || t.includes('login') || t.includes('submit');
+                  });
+                  if(cand) {
+                      cand.scrollIntoView({block:'center', inline:'center'});
+                      cand.click();
+                  }
+                })();
+                """
+                sb.cdp.evaluate(js)
 
-            human_type(
-                sb,
-                "/html/body/div[2]/div[2]/div[2]/div[2]/div/form/div[2]/div[3]/div[2]/div[1]/div/input",
-                first_name,
-            )
+            birth_year_selector = 'select[name^="additionalCustomerAttributes"]'
 
-            human_type(
-                sb,
-                "/html/body/div[2]/div[2]/div[2]/div[2]/div/form/div[2]/div[3]/div[2]/div[2]/div/input",
-                last_name,
-            )
+            print("Waiting for profile page to load...")
+                
+            profile_loaded = False
+            for _ in range(30):
+                try:
+                    is_ready = sb.cdp.evaluate("document.querySelector('select[name^=\"additionalCustomerAttributes\"]') !== null")
+                    if is_ready:
+                        profile_loaded = True
+                        break
+                except Exception:
+                    pass
+                sb.cdp.sleep(1)
+                
+            if not profile_loaded:
+                print("ERROR: Profile page failed to load after 30 seconds. Exiting.")
+                return False
+                
+            print("Profile page load wait complete.")
 
-            human_type(
-                sb,
-                "/html/body/div[2]/div[2]/div[2]/div[2]/div/form/div[2]/div[3]/div[4]/div/input",
-                password,
-            )
+            print("Profile page loaded.")
+            human_pause(sb, 0.8, 1.6)
 
-            print("Selecting country...")
-            select_option_by_text_strict(
-                sb,
-                "/html/body/div[2]/div[2]/div[2]/div[2]/div/form/div[2]/div[3]/div[5]/select",
-                country,
-                timeout=10,
-            )
-
-            human_pause(sb, 0.6, 1.2)
-
-            human_type(
-                sb,
-                "/html/body/div[2]/div[2]/div[2]/div[2]/div/form/div[2]/div[3]/div[6]/div/input",
-                zip_code,
-            )
-
-            print("  - Checking required checkboxes...")
-            human_click(sb, "/html/body/div[2]/div[2]/div[2]/div[2]/div/form/div[2]/div[3]/div[8]/input")
-            sb.cdp.sleep(random.uniform(0.2, 0.5))
-            human_click(sb, "/html/body/div[2]/div[2]/div[2]/div[2]/div/form/div[2]/div[3]/div[9]/input")
-            sb.cdp.sleep(random.uniform(0.3, 0.6))
-
-            print("Submitting form...")
-            human_click(sb, "/html/body/div[2]/div[2]/div[2]/div[2]/div/form/div[2]/div[3]/div[12]/input")
-
-            otp_input_xpath = "#gigya-textbox-code"
-            otp_wait_candidates = [
-                'input[autocomplete="one-time-code"]',
-                'input[type="tel"]',
-                'input[maxlength="1"]',
-                'input[name*="code" i]',
-                'input[aria-label*="code" i]',
-                'input[placeholder*="code" i]',
-                otp_input_xpath,
+            birth_years = [
+                "1960",
+                "1961",
+                "1962",
+                "1963",
+                "1964",
+                "1965",
+                "1966",
+                "1967",
+                "1968",
+                "1969",
+                "1970",
+                "1971",
+                "1972",
+                "1973",
+                "1974",
+                "1975",
+                "1976",
+                "1977",
+                "1978",
+                "1979",
+                "1980",
+                "1981",
+                "1982",
+                "1983",
+                "1984",
+                "1985",
+                "1986",
+                "1987",
+                "1988",
+                "1989",
+                "1990",
+                "1991",
+                "1992",
+                "1993",
+                "1994",
+                "1995",
+                "1996",
+                "1997",
+                "1998",
+                "1999",
+                "2000",
+                "2001",
+                "2002",
+                "2003",
+                "2004",
+                "2005",
+                "2006",
+                "2007",
             ]
 
-            print("Waiting for OTP page to load...")
-            loaded = False
-            for cand in otp_wait_candidates:
-                try:
-                    sb.cdp.wait_for_element(cand, timeout=6)
-                    loaded = True
-                    break
-                except Exception:
-                    continue
+            print("Selecting birth year...")
+            try:
+                chosen_year = select_random_option_in_nth_named_select(
+                    sb,
+                    name_contains="additionalCustomerAttributes",
+                    index=1,
+                    exclude_texts=[],
+                    include_texts=birth_years,
+                    timeout=14,
+                )
+                if chosen_year:
+                    print(f"  Selected birth year: {chosen_year}")
+                    human_pause(sb, 0.8, 1.6)
+                else:
+                    random_year = random.choice(birth_years)
+                    if select_option_by_text_safe(sb, birth_year_selector, random_year, timeout=12):
+                        print(f"  Selected birth year (fallback): {random_year}")
+                        human_pause(sb, 0.8, 1.6)
+                    else:
+                        print("  Birth year selection failed.")
+            except Exception:
+                print("  Birth year selection failed.")
 
-            if not loaded:
-                try:
-                    sb.cdp.sleep(3)
-                except Exception:
-                    time.sleep(3)
-
-            print("OTP page load wait complete.")
-
-            if is_truthy(os.getenv("AUTO_RESEND_OTP")):
+            if is_truthy(os.getenv("DEBUG_DOM")):
                 try:
                     js = """
                     (function(){
-                      const btns = Array.from(document.querySelectorAll('button,input[type="button"],input[type="submit"],a'));
+                      const selects = Array.from(document.querySelectorAll('select'))
+                        .map(s => ({name: s.name || null, id: s.id || null}))
+                        .filter(x => x.name || x.id);
+                      const fav = selects.filter(x => (x.name||'').toLowerCase().includes('favorite') || (x.id||'').toLowerCase().includes('favorite'));
+                      return {
+                        totalSelects: selects.length,
+                        first10: selects.slice(0,10),
+                        favorites: fav.slice(0,30),
+                      };
+                    })();
+                    """
+                    dbg = sb.cdp.evaluate(js)
+                    print(f"DEBUG_DOM selects: {dbg}")
+                except Exception:
+                    pass
+
+            olympic_sports = [
+                "Basketball",
+                "Swimming",
+                "Artistic Gymnastics",
+                "Athletics",
+                "Football (Soccer)",
+                "Baseball",
+                "Olympic Ceremonies",
+                "Beach Volleyball",
+                "Tennis",
+                "Golf",
+                "Softball",
+                "Volleyball",
+                "Wrestling",
+                "Boxing",
+                "Skateboarding",
+            ]
+
+            chosen_sports = random.sample(olympic_sports, k=min(5, len(olympic_sports)))
+
+            print(f"Selecting Olympic sport preferences ({len(chosen_sports)})...")
+            selected_sports = []
+            for i, sport in enumerate(chosen_sports, start=1):
+                select_timeout = 15 if i == 1 else 12
+                # The DOM has categoryFavorites288 and categoryFavorites289 (Paralympics?)
+                if select_nth_named_select_option(
+                    sb,
+                    name_contains="categoryFavorites288",
+                    index=i,
+                    option_text=sport,
+                    timeout=select_timeout,
+                ):
+                    print(f"  Selected Olympic sport {i}: {sport}")
+                    selected_sports.append(sport)
+                    human_pause(sb, 0.6, 1.2)
+                else:
+                    chosen = select_random_option_in_nth_named_select(
+                        sb,
+                        name_contains="categoryFavorites288",
+                        index=i,
+                        exclude_texts=selected_sports,
+                        timeout=select_timeout,
+                    )
+                    if chosen:
+                        print(f"  Selected Olympic sport {i} (fallback): {chosen}")
+                        selected_sports.append(chosen)
+                        human_pause(sb, 0.6, 1.2)
+                    else:
+                        print(f"  Olympic sport {i} selection failed.")
+                        continue
+
+            teams = random.sample(COUNTRY_POOL, k=min(3, len(COUNTRY_POOL)))
+
+            print(f"Selecting team preferences ({len(teams)})...")
+            for i, team in enumerate(teams, start=1):
+                select_timeout = 15 if i == 1 else 12
+                if select_nth_named_select_option(
+                    sb,
+                    name_contains="artistFavorites",
+                    index=i,
+                    option_text=team,
+                    timeout=select_timeout,
+                ):
+                    print(f"  Selected team {i}: {team}")
+                    human_pause(sb, 0.6, 1.2)
+                else:
+                    print(f"  Team {i} selection failed.")
+                    continue
+
+            print("Saving profile...")
+
+            save_clicked = False
+            for sel in [
+                "button.btn-primary.btn-xlg",  # Based on standard button classes found
+                "button[class*='theme-interaction-btn-bg']",
+                "app-sports-profile-save-section button",
+                "app-sports-profile-save-section ev-pl-button button",
+            ]:
+                if human_click(sb, sel):
+                    save_clicked = True
+                    break
+
+            if not save_clicked:
+                print("Save button click failed with CSS, trying JS fallback.")
+                try:
+                    js = """
+                    (function(){
                       const norm = (t)=> (t||'').replace(/\\s+/g,' ').trim().toLowerCase();
-                      const targets = btns.filter(b=>{
-                        const t = norm(b.textContent || b.value || b.getAttribute('aria-label') || '');
-                        return t.includes('resend') || t.includes('send code') || t.includes('send verification') || t === 'send';
-                      });
-                      const b = targets[0];
-                      if (!b) return {ok:false, reason:'no send/resend button found'};
-                      b.scrollIntoView({block:'center', inline:'center'});
-                      b.click();
-                      return {ok:true, clicked: (b.textContent||b.value||b.getAttribute('aria-label')||'').trim()};
+                      const nodes = Array.from(document.querySelectorAll('button,[role="button"],a,input[type="button"],input[type="submit"]'));
+                      const cand = nodes.find(n=>{const t=norm(n.textContent||n.value||n.getAttribute('aria-label')||''); return t==='save' || t.includes('save') || t.includes('submit');});
+                      if(!cand) return {ok:false};
+                      cand.scrollIntoView({block:'center', inline:'center'});
+                      cand.click();
+                      return {ok:true};
                     })();
                     """
                     r = sb.cdp.evaluate(js)
                     if isinstance(r, dict) and r.get("ok"):
-                        sb.cdp.sleep(random.uniform(0.4, 0.8))
+                        save_clicked = True
                 except Exception:
                     pass
 
-            imap_user = os.getenv("IMAP_USER")
-            imap_pass = os.getenv("IMAP_PASS")
-            if not imap_user or not imap_pass:
-                print("IMAP credentials missing; cannot retrieve OTP.")
-                return False
+            human_pause(sb, 4, 6)
 
-            # Poll for OTP up to 2 minutes, every 10 seconds
-            otp = None
-            otp_deadline = time.time() + 120  # 2 minutes max
-            attempt = 0
+            final_url = sb.cdp.get_current_url()
+            if "mydatasuccess" in final_url:
+                print("=" * 60)
+                print("SIGNUP SUCCESSFUL!")
+                print("=" * 60)
 
-            while time.time() < otp_deadline and not otp:
-                attempt += 1
-                otp = get_otp(imap_user, imap_pass, email)
-                if otp:
-                    break
-
-                remaining = int(otp_deadline - time.time())
-                print(f"OTP not found yet (attempt {attempt}). Retrying in 10s... ({remaining}s left)")
-                try:
-                    sb.cdp.sleep(10)
-                except Exception:
-                    time.sleep(10)
-
-            if otp:
-                print("OTP retrieved.")
-
-                if not enter_otp_code(sb, otp, timeout=60, fallback_selector=otp_input_xpath):
-                    print("Failed to enter OTP.")
-                    return False
-                human_pause(sb, 0.6, 1.2)
-
-                print("Clicking Verify...")
-                verify_btn_xpath = "input.gigya-input-submit"
-                if not human_click(sb, verify_btn_xpath):
-                    try:
-                        js = """
-                        (function(){
-                          const btns = Array.from(document.querySelectorAll('input.gigya-input-submit, button, input[type="submit"]'));
-                          const cand = btns.find(b => {
-                              const t = (b.value || b.innerText || '').toLowerCase();
-                              return t.includes('verify') || t.includes('submit');
-                          });
-                          if(cand) {
-                              cand.scrollIntoView({block:'center', inline:'center'});
-                              cand.click();
-                              return {ok:true, text: cand.value || cand.innerText};
-                          }
-                          return {ok:false};
-                        })();
-                        """
-                        r = sb.cdp.evaluate(js)
-                        if isinstance(r, dict) and r.get("ok"):
-                            print(f"  Fallback verify clicked via JS: {r.get('text')}")
-                            sb.cdp.sleep(random.uniform(0.2, 0.5))
-                        else:
-                            print("  Fallback verify click failed.")
-                    except Exception:
-                        pass
-
-                birth_year_selector = 'select[name^="additionalCustomerAttributes"]'
-
-                print("Waiting for profile page to load...")
-                
-                profile_loaded = False
-                for _ in range(30):
-                    try:
-                        is_ready = sb.cdp.evaluate("document.querySelector('select[name^=\"additionalCustomerAttributes\"]') !== null")
-                        if is_ready:
-                            profile_loaded = True
-                            break
-                    except Exception:
-                        pass
-                    sb.cdp.sleep(1)
-                    
-                if not profile_loaded:
-                    print("ERROR: Profile page failed to load after 30 seconds. Exiting.")
-                    return False
-                    
-                print("Profile page load wait complete.")
-
-                print("Profile page loaded.")
-                human_pause(sb, 0.8, 1.6)
-
-                birth_years = [
-                    "1960",
-                    "1961",
-                    "1962",
-                    "1963",
-                    "1964",
-                    "1965",
-                    "1966",
-                    "1967",
-                    "1968",
-                    "1969",
-                    "1970",
-                    "1971",
-                    "1972",
-                    "1973",
-                    "1974",
-                    "1975",
-                    "1976",
-                    "1977",
-                    "1978",
-                    "1979",
-                    "1980",
-                    "1981",
-                    "1982",
-                    "1983",
-                    "1984",
-                    "1985",
-                    "1986",
-                    "1987",
-                    "1988",
-                    "1989",
-                    "1990",
-                    "1991",
-                    "1992",
-                    "1993",
-                    "1994",
-                    "1995",
-                    "1996",
-                    "1997",
-                    "1998",
-                    "1999",
-                    "2000",
-                    "2001",
-                    "2002",
-                    "2003",
-                    "2004",
-                    "2005",
-                    "2006",
-                    "2007",
-                ]
-
-                print("Selecting birth year...")
-                try:
-                    chosen_year = select_random_option_in_nth_named_select(
-                        sb,
-                        name_contains="additionalCustomerAttributes",
-                        index=1,
-                        exclude_texts=[],
-                        include_texts=birth_years,
-                        timeout=14,
-                    )
-                    if chosen_year:
-                        print(f"  Selected birth year: {chosen_year}")
-                        human_pause(sb, 0.8, 1.6)
-                    else:
-                        random_year = random.choice(birth_years)
-                        if select_option_by_text_safe(sb, birth_year_selector, random_year, timeout=12):
-                            print(f"  Selected birth year (fallback): {random_year}")
-                            human_pause(sb, 0.8, 1.6)
-                        else:
-                            print("  Birth year selection failed.")
-                except Exception:
-                    print("  Birth year selection failed.")
-
-                if is_truthy(os.getenv("DEBUG_DOM")):
-                    try:
-                        js = """
-                        (function(){
-                          const selects = Array.from(document.querySelectorAll('select'))
-                            .map(s => ({name: s.name || null, id: s.id || null}))
-                            .filter(x => x.name || x.id);
-                          const fav = selects.filter(x => (x.name||'').toLowerCase().includes('favorite') || (x.id||'').toLowerCase().includes('favorite'));
-                          return {
-                            totalSelects: selects.length,
-                            first10: selects.slice(0,10),
-                            favorites: fav.slice(0,30),
-                          };
-                        })();
-                        """
-                        dbg = sb.cdp.evaluate(js)
-                        print(f"DEBUG_DOM selects: {dbg}")
-                    except Exception:
-                        pass
-
-                olympic_sports = [
-                    "Basketball",
-                    "Swimming",
-                    "Artistic Gymnastics",
-                    "Athletics",
-                    "Football (Soccer)",
-                    "Baseball",
-                    "Olympic Ceremonies",
-                    "Beach Volleyball",
-                    "Tennis",
-                    "Golf",
-                    "Softball",
-                    "Volleyball",
-                    "Wrestling",
-                    "Boxing",
-                    "Skateboarding",
-                ]
-
-                chosen_sports = random.sample(olympic_sports, k=min(5, len(olympic_sports)))
-
-                print(f"Selecting Olympic sport preferences ({len(chosen_sports)})...")
-                selected_sports = []
-                for i, sport in enumerate(chosen_sports, start=1):
-                    select_timeout = 15 if i == 1 else 12
-                    # The DOM has categoryFavorites288 and categoryFavorites289 (Paralympics?)
-                    if select_nth_named_select_option(
-                        sb,
-                        name_contains="categoryFavorites288",
-                        index=i,
-                        option_text=sport,
-                        timeout=select_timeout,
-                    ):
-                        print(f"  Selected Olympic sport {i}: {sport}")
-                        selected_sports.append(sport)
-                        human_pause(sb, 0.6, 1.2)
-                    else:
-                        chosen = select_random_option_in_nth_named_select(
-                            sb,
-                            name_contains="categoryFavorites288",
-                            index=i,
-                            exclude_texts=selected_sports,
-                            timeout=select_timeout,
-                        )
-                        if chosen:
-                            print(f"  Selected Olympic sport {i} (fallback): {chosen}")
-                            selected_sports.append(chosen)
-                            human_pause(sb, 0.6, 1.2)
-                        else:
-                            print(f"  Olympic sport {i} selection failed.")
-                            continue
-
-                teams = random.sample(COUNTRY_POOL, k=min(3, len(COUNTRY_POOL)))
-
-                print(f"Selecting team preferences ({len(teams)})...")
-                for i, team in enumerate(teams, start=1):
-                    select_timeout = 15 if i == 1 else 12
-                    if select_nth_named_select_option(
-                        sb,
-                        name_contains="artistFavorites",
-                        index=i,
-                        option_text=team,
-                        timeout=select_timeout,
-                    ):
-                        print(f"  Selected team {i}: {team}")
-                        human_pause(sb, 0.6, 1.2)
-                    else:
-                        print(f"  Team {i} selection failed.")
-                        continue
-
-                print("Saving profile...")
-
-                save_clicked = False
-                for sel in [
-                    "button.btn-primary.btn-xlg",  # Based on standard button classes found
-                    "button[class*='theme-interaction-btn-bg']",
-                    "app-sports-profile-save-section button",
-                    "app-sports-profile-save-section ev-pl-button button",
-                ]:
-                    if human_click(sb, sel):
-                        save_clicked = True
-                        break
-
-                if not save_clicked:
-                    print("Save button click failed with CSS, trying JS fallback.")
-                    try:
-                        js = """
-                        (function(){
-                          const norm = (t)=> (t||'').replace(/\\s+/g,' ').trim().toLowerCase();
-                          const nodes = Array.from(document.querySelectorAll('button,[role="button"],a,input[type="button"],input[type="submit"]'));
-                          const cand = nodes.find(n=>{const t=norm(n.textContent||n.value||n.getAttribute('aria-label')||''); return t==='save' || t.includes('save') || t.includes('submit');});
-                          if(!cand) return {ok:false};
-                          cand.scrollIntoView({block:'center', inline:'center'});
-                          cand.click();
-                          return {ok:true};
-                        })();
-                        """
-                        r = sb.cdp.evaluate(js)
-                        if isinstance(r, dict) and r.get("ok"):
-                            save_clicked = True
-                    except Exception:
-                        pass
-
-                human_pause(sb, 4, 6)
-
-                final_url = sb.cdp.get_current_url()
-                if "mydatasuccess" in final_url:
-                    print("=" * 60)
-                    print("SIGNUP SUCCESSFUL!")
-                    print("=" * 60)
-
-                    if DISCORD_WEBHOOK_URL:
-                        send_discord_webhook(row_index=row_index)
-                    return True
-                else:
-                    print("Profile saved, checking status...")
-                    return True
+                if DISCORD_WEBHOOK_URL:
+                    send_discord_webhook(row_index=row_index)
+                return True
             else:
-                print("Failed to get OTP within 2 minutes.")
-                return False
+                print("Profile saved, checking status...")
+                return True
 
         except Exception:
             print("Error in execution.")
