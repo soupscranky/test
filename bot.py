@@ -982,9 +982,10 @@ def run_registration(
                 selected_sports = []
                 for i, sport in enumerate(chosen_sports, start=1):
                     select_timeout = 15 if i == 1 else 12
+                    # The DOM has categoryFavorites288 and categoryFavorites289 (Paralympics?)
                     if select_nth_named_select_option(
                         sb,
-                        name_contains="categoryFavorites",
+                        name_contains="categoryFavorites288",
                         index=i,
                         option_text=sport,
                         timeout=select_timeout,
@@ -995,7 +996,7 @@ def run_registration(
                     else:
                         chosen = select_random_option_in_nth_named_select(
                             sb,
-                            name_contains="categoryFavorites",
+                            name_contains="categoryFavorites288",
                             index=i,
                             exclude_texts=selected_sports,
                             timeout=select_timeout,
@@ -1030,28 +1031,23 @@ def run_registration(
 
                 save_clicked = False
                 for sel in [
+                    "button.btn-primary.btn-xlg",  # Based on standard button classes found
+                    "button[class*='theme-interaction-btn-bg']",
                     "app-sports-profile-save-section button",
                     "app-sports-profile-save-section ev-pl-button button",
-                    "app-sports-profile-save-section [role='button']",
                 ]:
                     if human_click(sb, sel):
                         save_clicked = True
                         break
 
                 if not save_clicked:
-                    print("Save button click failed with CSS, trying XPath.")
-                    save_clicked = human_click(
-                        sb,
-                        "/html/body/div[3]/main/div/app-root/app-customer-data-page/app-sports-profile/app-sports-profile-save-section/section/div/div/div/ev-pl-button/button",
-                    )
-
-                if not save_clicked:
+                    print("Save button click failed with CSS, trying JS fallback.")
                     try:
                         js = """
                         (function(){
                           const norm = (t)=> (t||'').replace(/\\s+/g,' ').trim().toLowerCase();
                           const nodes = Array.from(document.querySelectorAll('button,[role="button"],a,input[type="button"],input[type="submit"]'));
-                          const cand = nodes.find(n=>{const t=norm(n.textContent||n.value||n.getAttribute('aria-label')||''); return t==='save' || t.includes('save');});
+                          const cand = nodes.find(n=>{const t=norm(n.textContent||n.value||n.getAttribute('aria-label')||''); return t==='save' || t.includes('save') || t.includes('submit');});
                           if(!cand) return {ok:false};
                           cand.scrollIntoView({block:'center', inline:'center'});
                           cand.click();
