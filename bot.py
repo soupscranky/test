@@ -422,113 +422,24 @@ def enter_otp_code(sb, otp, timeout=60, fallback_selector=None):
     js_fill = f"""
     (function() {{
       const code = {json.dumps(otp)};
-      const isVisible = (el) => {{
-        if (!el) return false;
-        const style = window.getComputedStyle(el);
-        if (style.display === 'none' || style.visibility === 'hidden') return false;
-        const r = el.getBoundingClientRect();
-        return r.width > 0 && r.height > 0;
-      }};
-
-      const nativeSet = (el, val) => {{
+      const input = document.querySelector("#gigya-textbox-code") || document.querySelector("input[name='code']");
+      if (input) {{
         try {{
-          const proto = el.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+          const proto = input.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
           const setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
-          setter.call(el, val);
-        }} catch (e) {{
-          el.value = val;
+          setter.call(input, code);
+        }} catch(e) {{
+          input.value = code;
         }}
-        try {{ el.dispatchEvent(new Event('input', {{bubbles:true}})); }} catch(e){{}}
-        try {{ el.dispatchEvent(new Event('change', {{bubbles:true}})); }} catch(e){{}}
-        try {{ el.dispatchEvent(new KeyboardEvent('keyup', {{bubbles:true}})); }} catch(e){{}}
-      }};
-
-      const collectInputs = (root) => {{
-        const inputs = [];
-        const pushAll = (node) => {{
-          if (!node) return;
-          if (node.querySelectorAll) {{
-            inputs.push(...Array.from(node.querySelectorAll('input')));
-          }}
-          if (node.querySelectorAll) {{
-            const withShadow = Array.from(node.querySelectorAll('*')).filter(n => n && n.shadowRoot);
-            for (const host of withShadow) {{
-              try {{
-                inputs.push(...Array.from(host.shadowRoot.querySelectorAll('input')));
-              }} catch (e) {{}}
-            }}
-          }}
-        }};
-        pushAll(root);
-        return Array.from(new Set(inputs)).filter(isVisible);
-      }};
-
-      const tryFillInRoot = (root) => {{
-        const inputs = collectInputs(root);
-        if (!inputs.length) return {{ok:false, reason:'no inputs'}};
-
-        let single = inputs.find(i => (i.getAttribute('autocomplete')||'').toLowerCase() === 'one-time-code');
-        if (!single) single = inputs.find(i => /otp|one.?time|verification|verify|code/i.test(i.name||'') || /otp|verification|code/i.test(i.id||''));
-        if (!single) single = inputs.find(i => /otp|verification|code/i.test(i.getAttribute('aria-label')||'') || /otp|verification|code/i.test(i.getAttribute('placeholder')||''));
-
-        if (single) {{
-          single.focus();
-          nativeSet(single, code);
-          return {{ok:true, mode:'single'}};
-        }}
-
-        const split = inputs
-          .filter(i => {{
-            const ml = parseInt(i.getAttribute('maxlength')||'0',10);
-            return ml === 1;
-          }});
-
-        if (split.length >= 6) {{
-          const first6 = split.slice(0, 6);
-          for (let idx=0; idx<6; idx++) {{
-            const el = first6[idx];
-            el.focus();
-            nativeSet(el, (code[idx] || ''));
-          }}
-          return {{ok:true, mode:'split', count:first6.length}};
-        }}
-
-        return {{ok:false, reason:'no otp pattern', inputCount: inputs.length}};
-      }};
-
-      let r = tryFillInRoot(document);
-      if (r && r.ok) return r;
-
-      if (__FALLBACK_SELECTOR__) {{
-        try {{
-          const fs = __FALLBACK_SELECTOR__;
-          let el = document.querySelector(fs);
-          if (!el && fs.startsWith('/')) {{
-            el = document.evaluate(fs, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-          }}
-          if (el) {{
-            el.focus();
-            nativeSet(el, code);
-            return {{ok:true, mode:'explicit_fallback'}};
-          }}
-        }} catch(e) {{}}
+        try {{ input.dispatchEvent(new Event('input', {{bubbles:true}})); }} catch(e){{}}
+        try {{ input.dispatchEvent(new Event('change', {{bubbles:true}})); }} catch(e){{}}
+        try {{ input.dispatchEvent(new KeyboardEvent('keyup', {{bubbles:true}})); }} catch(e){{}}
+        return {{ok: true, mode: 'single_injection'}};
       }}
-
-      const iframes = Array.from(document.querySelectorAll('iframe'));
-      for (const f of iframes) {{
-        try {{
-          const doc = f.contentDocument;
-          if (!doc) continue;
-          const rr = tryFillInRoot(doc);
-          if (rr && rr.ok) return {{...rr, via:'iframe'}};
-        }} catch (e) {{}}
-      }}
-
-      return r || {{ok:false, reason:'unknown'}};
+      return {{ok: false, reason: 'gigya-textbox-code element not found'}};
     }})();
     """
 
-    js_fill = js_fill.replace("__FALLBACK_SELECTOR__", json.dumps(fallback_selector) if fallback_selector else "null")
     end = time.time() + timeout
     last = None
     while time.time() < end:
@@ -542,10 +453,7 @@ def enter_otp_code(sb, otp, timeout=60, fallback_selector=None):
 
     try:
         url = sb.cdp.get_current_url()
-        counts = sb.cdp.evaluate(
-            "(function(){return {inputs: document.querySelectorAll('input').length, iframes: document.querySelectorAll('iframe').length, url: location.href}})();"
-        )
-        print(f"OTP entry failed after timeout. url={url} info={counts} last={last}")
+        print(f"OTP entry failed after timeout. url={url} last={last}")
     except Exception:
         pass
 
